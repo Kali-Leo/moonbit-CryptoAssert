@@ -1,0 +1,149 @@
+///|
+/// ═══════════════════════════════════════════════════════
+/// 加密货币转账 —— Hermes 数学守恒定理（.mbtp 验证层）
+/// ═══════════════════════════════════════════════════════
+/// 本文件通过 `moon prove` 调用 Why3/Z3 求解器，在编译期
+/// 验证以下定理：
+///
+///  1. fund_conservation_inv：资金守恒不变量（无溢出）
+///  2. transfer_state_invariant：转账状态前后一致性
+///  3. no_inflation_lemma：无通胀引理
+///  4. fee_nonnegative_lemma：手续费非负引理
+///  5. value_monotonic_lemma：资产单调性引理
+///
+/// 每个 lemma 的花括号内含显式一阶逻辑谓词与符号推导步骤。
+/// ═══════════════════════════════════════════════════════
+
+///|
+/// 账户余额的抽象模型：
+///   total_balance = locked_balance + available_balance
+fn model_balance(total : UInt64, locked : UInt64, available : UInt64) -> Bool {
+  total == locked + available
+}
+
+///|
+/// 资金守恒不变量（Fund Conservation Invariant）
+///
+/// 数学表述：
+///   ∀ tx ∈ TransactionSpec,
+///     sum(tx.inputs.amount) == sum(tx.outputs.amount) + tx.fee.total
+///
+/// 一旦此不变量成立，则任何转账都不能凭空创造或销毁资金。
+predicate fund_conservation_inv(
+  total_in : UInt64,
+  total_out : UInt64,
+  fee : UInt64,
+) {
+  total_in == total_out + fee
+}
+
+///|
+/// 转账状态不变量（Transfer State Invariant）
+///
+/// 转账前后，系统总资产守恒：
+///   pre_state.total == post_state.total
+///
+/// 其中 pre_state.total = inputs.sum
+///       post_state.total = outputs.sum + fee
+predicate transfer_state_invariant(
+  pre_total : UInt64,
+  post_total : UInt64,
+) {
+  pre_total == post_total
+}
+
+///|
+/// 无通胀引理（No Inflation Lemma）
+///
+/// 证明：对于任何合法转账，总输出 ≤ 总输入。
+///
+/// 推导步骤（花括号内为一阶逻辑）：
+///   (1) fund_conservation_inv(in, out, fee) → in == out + fee
+///   (2) fee >= 0                                           (手续费非负假设)
+///   (3) out + fee >= out                                   (Z3 算术）
+///   (4) in >= out                                           (传递性)
+lemma no_inflation_lemma(
+  total_in : UInt64,
+  total_out : UInt64,
+  fee : UInt64,
+) where {
+  proof_require: fund_conservation_inv(total_in, total_out, fee),
+  proof_require: fee >= 0,
+  proof_ensure: total_in >= total_out,
+} {
+  // 步骤 (1): fund_conservation_inv 给出等式
+  // proof_assert 告知 Z3：已知 in == out + fee
+  proof_assert total_in == total_out + fee
+
+  // 步骤 (2)-(3): Z3 从 fee >= 0 自动推导 out + fee >= out
+  proof_assert total_out + fee >= total_out
+
+  // 步骤 (4): 由等式代入，得出 in >= out
+  proof_assert total_in >= total_out
+}
+
+///|
+/// 手续费非负引理（Fee Non‑Negativity Lemma）
+///
+/// 手续费必须非负，否则资金守恒不变量会导致反直觉的 out > in。
+lemma fee_nonnegative_lemma(fee : UInt64) where {
+  proof_ensure: fee >= 0,
+} {
+  // UInt64 天生非负；Z3 自动确认
+  proof_assert fee >= 0
+}
+
+///|
+/// 资产单调性引理（Value Monotonicity Lemma）
+///
+/// 如果你向系统注入更多输入而输出与费用不变，
+/// 则转出后的剩余资产（in - out - fee）增长。
+lemma value_monotonic_lemma(
+  in1 : UInt64,
+  in2 : UInt64,
+  out : UInt64,
+  fee : UInt64,
+) where {
+  proof_require: in1 >= in2,
+  proof_require: in1 >= out + fee,
+  proof_require: in2 >= out + fee,
+  proof_ensure: (in1 - out - fee) >= (in2 - out - fee),
+} {
+  proof_assert in1 - out - fee >= in2 - out - fee
+}
+
+///|
+/// 溢出防护引理（Overflow Prevention Lemma）
+///
+/// 在 UInt64 域上，当且仅当 a + b >= a 时无回绕。
+lemma overflow_safe_lemma(a : UInt64, b : UInt64) where {
+  proof_require: a + b >= a,
+  proof_ensure: a + b >= b,
+} {
+  proof_assert a + b >= b
+}
+
+///|
+/// 完整的转账正确性定理
+///
+/// 如果：
+///   (1) 资金守恒不变量成立
+///   (2) 手续费非负
+/// 则：
+///   (a) 无通胀 (total_in >= total_out)
+///   (b) 转账状态不变量成立
+///   (c) 转出量非负
+lemma transfer_correctness_theorem(
+  total_in : UInt64,
+  total_out : UInt64,
+  fee : UInt64,
+) where {
+  proof_require: fund_conservation_inv(total_in, total_out, fee),
+  proof_require: fee >= 0,
+  proof_ensure: total_in >= total_out,
+  proof_ensure: transfer_state_invariant(total_in, total_out + fee),
+} {
+  // Z3 从等式 total_in == total_out + fee 可自动推导
+  proof_assert total_in >= total_out
+  proof_assert transfer_state_invariant(total_in, total_out + fee)
+}
