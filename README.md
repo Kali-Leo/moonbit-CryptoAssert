@@ -1,6 +1,6 @@
 # CryptoAssert — Cryptocurrency Compliance & Security Assertion Library
 
-> **MoonBit | Hermes-Proven | Zero-Runtime-Error | Formally Verified**
+
 >
 > A production-grade, three-tier assertion template library for cryptocurrency compliance
 > verification, bridging business logic, protocol specifications, and mathematical proofs
