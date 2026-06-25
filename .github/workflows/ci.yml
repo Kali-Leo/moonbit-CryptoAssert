@@ -20,8 +20,9 @@ jobs:
 
       - name: Install MoonBit
         run: |
-          /bin/bash -c "$(curl -fsSL https://cli.moonbitlang.com/install/linux_amd64.sh)"
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          export MOON_HOME="$HOME/.moon"
+          curl -fL https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          ls "$MOON_HOME/bin/moon" && echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
 
       - name: moon check
         run: moon check
@@ -34,8 +35,9 @@ jobs:
 
       - name: Install MoonBit
         run: |
-          /bin/bash -c "$(curl -fsSL https://cli.moonbitlang.com/install/linux_amd64.sh)"
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          export MOON_HOME="$HOME/.moon"
+          curl -fL https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          ls "$MOON_HOME/bin/moon" && echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
 
       - name: Install Why3 / Z3
         run: |
@@ -56,8 +58,9 @@ jobs:
 
       - name: Install MoonBit
         run: |
-          /bin/bash -c "$(curl -fsSL https://cli.moonbitlang.com/install/linux_amd64.sh)"
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          export MOON_HOME="$HOME/.moon"
+          curl -fL https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          ls "$MOON_HOME/bin/moon" && echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
 
       - name: moon test
         run: moon test -v --target native
