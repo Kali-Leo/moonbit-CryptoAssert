@@ -1,5 +1,5 @@
 import {
-  "anonymous0/crypto_assert/protocol",
+  "Kali-Leo/moonbit-CryptoAssert/protocol",
 }
 
 import {
