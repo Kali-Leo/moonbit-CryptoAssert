@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  MOON_HOME: /home/runner/.moon
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   check:
@@ -21,14 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MoonBit
+      - name: Install MoonBit toolchain
         run: |
-          export MOON_HOME="/home/runner/.moon"
-          mkdir -p "$MOON_HOME/bin"
-          curl -sSfLo /tmp/install-moon.sh https://cli.moonbitlang.com/install/linux_amd64.sh
-          yes '' | bash /tmp/install-moon.sh
-          ls -la "$MOON_HOME/bin/"
-          echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
+          curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
+            https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: moon check
         run: moon check
@@ -39,13 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MoonBit
+      - name: Install MoonBit toolchain
         run: |
-          export MOON_HOME="/home/runner/.moon"
-          mkdir -p "$MOON_HOME/bin"
-          curl -sSfLo /tmp/install-moon.sh https://cli.moonbitlang.com/install/linux_amd64.sh
-          yes '' | bash /tmp/install-moon.sh
-          echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
+          curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
+            https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Install Why3 / Z3
         run: |
@@ -64,13 +59,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MoonBit
+      - name: Install MoonBit toolchain
         run: |
-          export MOON_HOME="/home/runner/.moon"
-          mkdir -p "$MOON_HOME/bin"
-          curl -sSfLo /tmp/install-moon.sh https://cli.moonbitlang.com/install/linux_amd64.sh
-          yes '' | bash /tmp/install-moon.sh
-          echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
+          curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
+            https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: moon test
         run: moon test -v --target native
