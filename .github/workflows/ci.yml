@@ -26,7 +26,10 @@ jobs:
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      # 🌟 换了一个独立的 Step，此时 GitHub 会完美自动加载上文写入的 $GITHUB_PATH
+      # 🌟 核心修复：更新云端依赖索引
+      - name: Update MoonBit Registry
+        run: moon update
+
       - name: Run moon check
         run: moon check
 
@@ -49,6 +52,10 @@ jobs:
       - name: Detect Why3 provers
         run: why3 config detect
 
+      # 🌟 核心修复：更新云端依赖索引
+      - name: Update MoonBit Registry
+        run: moon update
+
       - name: Run moon prove
         run: moon prove
 
@@ -62,6 +69,10 @@ jobs:
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      # 🌟 核心修复：更新云端依赖索引
+      - name: Update MoonBit Registry
+        run: moon update
 
       - name: Run moon test
         run: moon test -v --target native
