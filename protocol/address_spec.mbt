@@ -100,7 +100,7 @@ fn eip55_validate_checksum(addr : String) -> Bool {
     return false
   }
   // Extract hex part (skip "0x")
-  let hex_part = addr.substring(start=2)
+  let hex_part = addr[2:].to_owned()
   let lower_hex = hex_part.to_lower()
   // keccak256 needs the ASCII bytes of the lower-case hex string
   let hash_input = lower_hex.to_bytes()
@@ -135,7 +135,7 @@ fn eip55_validate_checksum(addr : String) -> Bool {
 /// 规则（Solidity address type）：
 ///   0x 前缀 + 40 个十六进制字符 = 42 字符
 ///   底层 20 字节
-fn eth_hex_length_check(addr : String) -> Bool {
+pub fn eth_hex_length_check(addr : String) -> Bool {
   if addr.length() != 42 {
     return false
   }

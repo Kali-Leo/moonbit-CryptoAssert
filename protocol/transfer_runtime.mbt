@@ -75,7 +75,7 @@ pub fn check_no_inflation(
 ///   from transfer_proof.mbtp
 ///
 /// UInt64 天生非负，此函数为显式桥接存在。
-pub fn check_fee_nonnegative(fee : UInt64) -> Bool {
+pub fn check_fee_nonnegative(_fee : UInt64) -> Bool {
   // UInt64 >= 0 总是成立
   true
 }

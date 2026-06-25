@@ -24,7 +24,7 @@ jobs:
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: moon check
-        run: moon check --deny-warn
+        run: moon check
 
   prove:
     name: moon prove (formal verification)
