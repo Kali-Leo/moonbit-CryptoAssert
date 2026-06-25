@@ -23,11 +23,11 @@ jobs:
 
       - name: Install MoonBit toolchain
         run: |
-          curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
-            https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: moon check
+      # 🌟 换了一个独立的 Step，此时 GitHub 会完美自动加载上文写入的 $GITHUB_PATH
+      - name: Run moon check
         run: moon check
 
   prove:
@@ -38,8 +38,7 @@ jobs:
 
       - name: Install MoonBit toolchain
         run: |
-          curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
-            https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Install Why3 / Z3
@@ -50,7 +49,7 @@ jobs:
       - name: Detect Why3 provers
         run: why3 config detect
 
-      - name: moon prove
+      - name: Run moon prove
         run: moon prove
 
   test:
@@ -61,9 +60,8 @@ jobs:
 
       - name: Install MoonBit toolchain
         run: |
-          curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
-            https://cli.moonbitlang.com/install/linux_amd64.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: moon test
+      - name: Run moon test
         run: moon test -v --target native
