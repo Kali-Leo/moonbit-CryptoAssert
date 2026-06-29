@@ -103,7 +103,7 @@ fn eip55_validate_checksum(addr : String) -> Bool {
   let hex_part = addr[2:].to_owned()
   let lower_hex = hex_part.to_lower()
   // keccak256 needs the ASCII bytes of the lower-case hex string
-  let hash_input = lower_hex.to_bytes()
+  let hash_input = @utf8.encode(lower_hex)
   let hash = keccak256(hash_input)
   let nibbles = keccak256_to_nibbles(hash)
   // Check each character
@@ -154,9 +154,12 @@ pub fn eth_hex_length_check(addr : String) -> Bool {
 }
 
 ///|
-/// 对 Base58 字符集的地址做校验和：始终通过（无 EIP-55 场景）
-fn base58_check_pass(_addr : String) -> Bool {
-  true
+/// 真正的 Base58Check 校验和验证
+///
+/// 使用 base58_check_verify 进行 Base58 解码 + 双重 SHA-256 校验和验证。
+/// 替换了原来的 mock 实现。
+fn base58_check_pass(addr : String) -> Bool {
+  base58_check_verify(addr)
 }
 
 ///|
@@ -275,7 +278,9 @@ impl AddressVerifier for DefaultVerifier with fn validate_checksum(
     Eth => true
     EthEip55 => eip55_validate_checksum(address)
     BtcP2pkh | BtcP2sh | Tron => base58_check_pass(address)
-    BtcBech32 | BtcBech32m | Cosmos => address.length() >= 26
+    BtcBech32 => bech32_verify(address)
+    BtcBech32m => bech32m_verify(address)
+    Cosmos => cosmos_verify(address)
     Solana => true
   }
 }

@@ -10,6 +10,10 @@
 /// Capacity: 512 bits
 /// Rounds: 24
 /// Padding: 0x01 || zeroes || 0x80 (Keccak padding, not SHA3)
+///
+/// Performance optimization: Uses in-place mutation on a single
+/// Array[UInt64] buffer to avoid heap allocations of FixedArray
+/// intermediate results per round — reduces GC pressure in Wasm.
 /// ═══════════════════════════════════════════════════════
 
 ///|
@@ -66,55 +70,60 @@ fn load_u64_le(src : Bytes, offset : Int) -> UInt64 {
 }
 
 ///|
-/// Apply one Keccak-f[1600] round to state, producing new state
-fn keccak_round(a : FixedArray[UInt64], round : Int) -> FixedArray[UInt64] {
-  // Theta
-  let c = FixedArray::makei(5, fn(i : Int) -> UInt64 {
-    a[i] ^ a[i + 5] ^ a[i + 10] ^ a[i + 15] ^ a[i + 20]
-  })
-  let d = FixedArray::makei(5, fn(i : Int) -> UInt64 {
-    let prev = if i == 0 { 4 } else { i - 1 }
-    c[prev] ^ rotl64(c[(i + 1) % 5], 1)
-  })
-  let a_theta = FixedArray::makei(25, fn(i : Int) -> UInt64 { a[i] ^ d[i % 5] })
-  // Rho + Pi
-  let b = FixedArray::makei(25, fn(i : Int) -> UInt64 {
-    rotl64(a_theta[i], k_rotations[i])
-  })
-  let a_rhopi = FixedArray::makei(25, fn(i : Int) -> UInt64 { b[k_pi[i]] })
-  // Chi
-  let a_chi = FixedArray::makei(25, fn(i : Int) -> UInt64 {
-    let x = i % 5
-    let y = i / 5
-    a_rhopi[i] ^
-    (a_rhopi[(x + 1) % 5 + 5 * y].lnot() & a_rhopi[(x + 2) % 5 + 5 * y])
-  })
-  // Iota
-  FixedArray::makei(25, fn(i : Int) -> UInt64 {
-    if i == 0 {
-      a_chi[0] ^ k_round_constants[round]
-    } else {
-      a_chi[i]
-    }
-  })
-}
+/// Keccak-f[1600] permutation — 24 rounds, in-place on mutable Array
+fn keccak_f1600_inplace(state : Array[UInt64]) -> Unit {
+  let b = Array::makei(25, fn(_i : Int) -> UInt64 { 0UL })
+  let c = Array::makei(5, fn(_i : Int) -> UInt64 { 0UL })
+  let d = Array::makei(5, fn(_i : Int) -> UInt64 { 0UL })
 
-///|
-/// Single Keccak-f[1600] permutation (24 rounds)
-fn keccak_f1600(state : FixedArray[UInt64]) -> FixedArray[UInt64] {
-  for a = state, round = 0; round < 24; {
-    continue keccak_round(a, round), round + 1
-  } nobreak {
-    a
+  for round in 0..<24 {
+    // θ step
+    for x in 0..<5 {
+      c[x] = state[x] ^
+        state[x + 5] ^
+        state[x + 10] ^
+        state[x + 15] ^
+        state[x + 20]
+    }
+    for x in 0..<5 {
+      d[x] = c[(x + 4) % 5] ^ rotl64(c[(x + 1) % 5], 1)
+    }
+    for x in 0..<25 {
+      state[x] = state[x] ^ d[x % 5]
+    }
+
+    // ρ + π combined
+    for i in 0..<25 {
+      b[k_pi[i]] = rotl64(state[i], k_rotations[i])
+    }
+    for i in 0..<25 {
+      state[i] = b[i]
+    }
+
+    // χ step
+    for y in 0..<=4 {
+      let y5 = 5 * y
+      for x in 0..<=4 {
+        let idx = x + y5
+        let a_val = state[idx]
+        let b_idx = (x + 1) % 5 + y5
+        let c_idx = (x + 2) % 5 + y5
+        b[idx] = a_val ^ (state[b_idx].lnot() & state[c_idx])
+      }
+    }
+    for i in 0..<25 {
+      state[i] = b[i]
+    }
+
+    // ι step
+    state[0] = state[0] ^ k_round_constants[round]
   }
 }
 
 ///|
 /// Absorb input bytes into keccak state, produce 32-byte output (keccak256)
-///
-/// Uses Keccak padding: 0x01 || zeroes || 0x80
 pub fn keccak256(input : Bytes) -> Bytes {
-  let rate = 136 // 1088 bits / 8
+  let rate = 136
   let input_len = input.length()
 
   let pad_len = rate - input_len % rate
@@ -124,13 +133,11 @@ pub fn keccak256(input : Bytes) -> Bytes {
     input_len + pad_len
   }
 
-  // Use Buffer to build the padded input
   let buf = Buffer::Buffer(size_hint=padded_len)
   for i in 0..<input_len {
     buf.write_byte(input[i])
   }
   if pad_len == 1 {
-    // 0x01 || zeroes || 0x80 with 0x01 and 0x80 both in first byte
     buf.write_byte(b'\x81')
     for _i2 in 0..<(pad_len - 1) {
       buf.write_byte(b'\x00')
@@ -144,42 +151,28 @@ pub fn keccak256(input : Bytes) -> Bytes {
   }
   let padded = buf.to_bytes()
 
-  // Initialize state to all zeros
-  let initial_state = FixedArray::makei(25, fn(_i : Int) -> UInt64 { 0UL })
-
-  // Absorb: functional for loop over blocks, threading state
+  let state = Array::makei(25, fn(_i : Int) -> UInt64 { 0UL })
   let total_blocks = padded_len / rate
-  for state = initial_state, block = 0; block < total_blocks; {
+  for block in 0..<total_blocks {
     let offset = block * rate
-    let state_with_data = FixedArray::makei(25, fn(i : Int) -> UInt64 {
-      if i < 17 { // rate/8 = 136/8 = 17
-        state[i] ^ load_u64_le(padded, offset + i * 8)
-      } else {
-        state[i]
-      }
-    })
-    let new_state = keccak_f1600(state_with_data)
-    continue new_state, block + 1
-  } nobreak {
-    // Squeeze 32 bytes from absorbed state
-    let result_buf = Buffer::Buffer(size_hint=32)
-    for i in 0..<4 {
-      let w = state[i]
-      for j in 0..<8 {
-        result_buf.write_byte(((w >> (8 * j)) & 0xFFUL).to_byte())
-      }
+    for i in 0..<17 {
+      state[i] = state[i] ^ load_u64_le(padded, offset + i * 8)
     }
-    result_buf.to_bytes()
+    keccak_f1600_inplace(state)
   }
+
+  let result_buf = Buffer::Buffer(size_hint=32)
+  for i in 0..<4 {
+    let w = state[i]
+    for j in 0..<8 {
+      result_buf.write_byte(((w >> (8 * j)) & 0xFFUL).to_byte())
+    }
+  }
+  result_buf.to_bytes()
 }
 
 ///|
 /// Convert a 32-byte keccak hash to nibble array for EIP-55 casing
-///
-/// For each of the 40 hex characters in the address:
-///   - Even positions (0,2,4,...) use the high nibble of hash[pos/2]
-///   - Odd positions (1,3,5,...) use the low nibble of hash[pos/2]
-///   - If the nibble >= 8, the corresponding address char must be uppercase
 pub fn keccak256_to_nibbles(hash : Bytes) -> FixedArray[UInt64] {
   FixedArray::makei(40, fn(i : Int) -> UInt64 {
     let byte_i = i / 2

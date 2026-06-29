@@ -19,7 +19,7 @@ repository = ""
 
 license = "Apache-2.0"
 
-keywords = []
+keywords = [ ]
 
 description = "Multi-chain cryptographic assertion & formal verification library."
 

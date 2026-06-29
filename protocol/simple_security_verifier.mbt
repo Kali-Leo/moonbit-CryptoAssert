@@ -6,30 +6,22 @@
 /// 重放保护检查、合约安全检查和跨链桥安全检查。
 ///
 /// 所有断言均有真实计算，不直接抛出预设结果。
-/// 数值计算直接对接 transfer_proof.mbtp 中的 lemma 证明。
+/// 数值计算使用 BigInt 无限精度，避免 UInt64 溢出
+/// （特别是以太坊 18 位精度场景下 > 18.44 ETH 的转账）。
 /// ═══════════════════════════════════════════════════════
 
 ///|
-/// 将十进制字符串解析为 UInt64
-fn parse_decimal(s : String) -> UInt64 raise AssertError {
-  let mut v : UInt64 = 0
+/// 将十进制字符串解析为 BigInt
+fn parse_decimal(s : String) -> BigInt raise AssertError {
+  if s.length() == 0 {
+    raise AssertError::NumericParseError("Empty amount string")
+  }
   for c in s {
     if c < '0' || c > '9' {
       raise AssertError::NumericParseError("Invalid digit in amount: \{s}")
     }
-    let digit : UInt64 = (c.to_int() - '0'.to_int()).to_uint64()
-    let next = v * 10 + digit
-    if next < v {
-      raise AssertError::NumericParseError(
-        "UInt64 overflow parsing amount: \{s}",
-      )
-    }
-    v = next
   }
-  if s.length() == 0 {
-    raise AssertError::NumericParseError("Empty amount string")
-  }
-  v
+  BigInt::from_string(s, radix=10)
 }
 
 ///|
@@ -47,17 +39,17 @@ enum FeeThreshold {
 } derive(Eq)
 
 ///|
-/// 判断费率阈值：fee/amount * 100 vs max_ratio
+/// 判断费率阈值：fee/amount vs max_ratio（使用 BigInt）
 fn classify_fee_ratio(
-  fee : UInt64,
-  amount : UInt64,
-  max_ratio : UInt64,
+  fee : BigInt,
+  amount : BigInt,
+  max_ratio : BigInt,
 ) -> FeeThreshold {
-  let scaled_fee = fee * 100
+  let scaled_fee = fee * BigInt::from_int(100)
   let scaled_threshold = amount * max_ratio
   if scaled_fee <= scaled_threshold {
     Normal
-  } else if scaled_fee <= scaled_threshold * 2 {
+  } else if scaled_fee <= scaled_threshold * BigInt::from_int(2) {
     Elevated
   } else {
     Excessive
@@ -65,11 +57,11 @@ fn classify_fee_ratio(
 }
 
 ///|
-/// 检查范围：min <= value <= max，精确计算不推预设
+/// 检查范围：min <= value <= max（使用 BigInt）
 fn check_amount_range(
-  amount : UInt64,
-  min_val : UInt64,
-  max_val : UInt64,
+  amount : BigInt,
+  min_val : BigInt,
+  max_val : BigInt,
 ) -> SecurityAssertResult {
   if min_val > max_val {
     Unsafe("min (\{min_val.to_string()}) exceeds max (\{max_val.to_string()})")
@@ -181,31 +173,20 @@ impl SecurityVerifier for SimpleSecurityVerifier with fn check_fee_ratio(
   let amount = try! parse_decimal(amount_str)
   let max_ratio = try! parse_decimal(max_ratio_str)
 
-  // fee / amount <= max_ratio / 100
-  // 避免浮点数：fee * 100 <= amount * max_ratio
-
-  let scaled_fee = fee * 100
-  if scaled_fee < fee {
-    Unsafe("UInt64 overflow computing scaled fee")
+  if amount == BigInt::from_int(0) {
+    Unsafe("Cannot compute fee ratio: amount is zero")
   } else {
-    let scaled_threshold = amount * max_ratio
-    if scaled_threshold < amount {
-      Unsafe("UInt64 overflow computing scaled threshold")
-    } else if amount == 0 {
-      Unsafe("Cannot compute fee ratio: amount is zero")
-    } else {
-      let classification = classify_fee_ratio(fee, amount, max_ratio)
-      match classification {
-        Normal => Safe
-        Elevated =>
-          Warning(
-            "Fee rate is elevated: \{fee_str} / \{amount_str} exceeds \{max_ratio_str}%",
-          )
-        Excessive =>
-          Unsafe(
-            "Fee rate is excessive: \{fee_str} / \{amount_str} far exceeds \{max_ratio_str}%",
-          )
-      }
+    let classification = classify_fee_ratio(fee, amount, max_ratio)
+    match classification {
+      Normal => Safe
+      Elevated =>
+        Warning(
+          "Fee rate is elevated: \{fee_str} / \{amount_str} exceeds \{max_ratio_str}%",
+        )
+      Excessive =>
+        Unsafe(
+          "Fee rate is excessive: \{fee_str} / \{amount_str} far exceeds \{max_ratio_str}%",
+        )
     }
   }
 }

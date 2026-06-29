@@ -13,7 +13,7 @@ pub(all) suberror AssertError {
   InvalidLength(String, UInt, UInt)
   InvalidCharacter(String, Char)
   ChecksumMismatch(String)
-  AmountImbalance(UInt64, UInt64, UInt64)
+  AmountImbalance(String, String, String)
   IncompatibleScheme(SignatureScheme, AddressType)
   SignatureVerificationFailed(String)
   NumericParseError(String)

@@ -11,77 +11,60 @@
 /// ═══════════════════════════════════════
 
 ///|
-/// 将 amount_str（十进制字符串）解析为 UInt64
-/// 边解析边检查溢出，无法解析时抛出 NumericParseError
-fn parse_amount(s : String) -> UInt64 raise @protocol.AssertError {
-  let mut v : UInt64 = 0
+/// 将 amount_str（十进制字符串）解析为 BigInt
+///
+/// 使用 BigInt（无限精度）替代 UInt64，避免以太坊 18 位精度
+/// 场景下当金额超过 18.44 ETH（~1.84×10^19 wei）时的整数溢出。
+///
+/// 预验证数字字符后调用 BigInt::from_string。
+fn parse_amount(s : String) -> BigInt raise @protocol.AssertError {
+  if s.length() == 0 {
+    raise @protocol.AssertError::NumericParseError("Empty amount string")
+  }
   for c in s {
     if c < '0' || c > '9' {
       raise @protocol.AssertError::NumericParseError(
         "Invalid digit in amount: \{s}",
       )
     }
-    let digit : UInt64 = (c.to_int() - '0'.to_int()).to_uint64()
-    let next = v * 10 + digit
-    if next < v {
-      raise @protocol.AssertError::NumericParseError(
-        "UInt64 overflow parsing amount: \{s}",
-      )
-    }
-    v = next
   }
-  if s.length() == 0 {
-    raise @protocol.AssertError::NumericParseError("Empty amount string")
-  }
-  v
+  BigInt::from_string(s, radix=10)
 }
 
 ///|
 /// 断言交易资金守恒：sum(inputs) == sum(outputs) + fee.total
 ///
-/// 基于 `transfer_proof.mbtp` 中的形式化 lemma 和
-/// `transfer_runtime.mbt` 中的运行时桥函数进行深度绑定。
+/// BigInt 版本 — 无限精度，支持任意金额的以太坊 ERC20 转账验证。
 ///
 /// 形式化验证链：
 ///   proof_require: fund_conservation_inv(total_in, total_out, fee)
-///   proof_require: overflow_safe_lemma for each accumulation step
-///   proof_ensure: check_transfer_correctness(total_in, total_out, fee)
 ///
-/// 运行时通过 @protocol.check_overflow_safe 和
-/// @protocol.check_fund_conservation 直接利用 lemma 桥函数。
+/// 运行时通过 BigInt 算术直接验证，无溢出风险。
 pub fn assert_transaction_balance(
   tx : @protocol.TransactionSpec,
 ) -> @protocol.AssertionResult raise @protocol.AssertError {
-  // 累加所有 inputs
-  let mut total_in : UInt64 = 0
+  // 累加所有 inputs（BigInt）
+  let mut total_in : BigInt = BigInt::from_int(0)
   for i in 0..<tx.inputs.length() {
     let amount = parse_amount(tx.inputs[i].amount_str)
-    // overflow_safe_lemma: 利用 @protocol.check_overflow_safe 桥函数
-    if !@protocol.check_overflow_safe(total_in, amount) {
-      raise @protocol.AssertError::SecurityCheckFailed(
-        "UInt64 overflow in total_in accumulation",
-      )
-    }
     total_in = total_in + amount
   }
-  // 累加所有 outputs
-  let mut total_out : UInt64 = 0
+  // 累加所有 outputs（BigInt）
+  let mut total_out : BigInt = BigInt::from_int(0)
   for i in 0..<tx.outputs.length() {
     let amount = parse_amount(tx.outputs[i].amount_str)
-    if !@protocol.check_overflow_safe(total_out, amount) {
-      raise @protocol.AssertError::SecurityCheckFailed(
-        "UInt64 overflow in total_out accumulation",
-      )
-    }
     total_out = total_out + amount
   }
-  // 解析手续费
+  // 解析手续费（BigInt）
   let fee = parse_amount(tx.fee.total_str)
-  // fee_nonnegative_lemma: UInt64 >= 0 天然满足
 
-  // fund_conservation_inv + overflow_safe_lemma for out+fee:
-  if !@protocol.check_fund_conservation(total_in, total_out, fee) {
-    raise @protocol.AssertError::AmountImbalance(total_in, total_out, fee)
+  // 资金守恒：total_in == total_out + fee
+  if total_in != total_out + fee {
+    raise @protocol.AssertError::AmountImbalance(
+      total_in.to_string(),
+      total_out.to_string(),
+      fee.to_string(),
+    )
   }
   @protocol.AssertionResult::Valid
 }
